@@ -1,0 +1,15 @@
+{
+  "name": "infinitycall-voip",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Exemplo de interface e servidor para integração de chamadas VoIP via Twilio",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "twilio": "^5.4.0"
+  }
+}
