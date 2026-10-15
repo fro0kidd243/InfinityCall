@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InfinityCall VoIP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@25.10.1/build/css/intlTelInput.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b12;color:white;font-family:"Lato",sans-serif;display:grid;place-items:center;min-height:100vh;padding:15px}
+.phone{width:min(370px,100%);padding:24px;background:#111722;border:1px solid #273346;border-radius:26px;box-shadow:0 20px 70px #0008}
+.logo{text-align:center;color:#42e8a0;font-size:25px;font-weight:900}
+.sub{text-align:center;color:#8290a5;font-size:11px;margin:8px 0 24px}
+label{display:block;font-size:12px;color:#aab7c9;margin-bottom:8px}
+.country-toggle{width:100%;padding:12px;margin-bottom:18px;background:#202a39;color:#42e8a0;border:1px solid #34445b;border-radius:12px;font-weight:900;font-size:13px}
+.country-toggle.off{color:#ff6474}
+.iti{width:100%;margin-bottom:15px}
+.iti input{width:100%;padding-top:15px!important;padding-bottom:15px!important;background:#080d16!important;border:1px solid #2c394b!important;border-radius:12px!important;color:white!important;font:16px "Lato",sans-serif!important}
+.iti__dropdown-content,.iti__country-list{background:#111722;color:white}
+.iti__country-list{max-height:220px}
+.iti__country:hover,.iti__country--highlight{background:#273346}
+.iti__search-input{background:#080d16;color:white;border:1px solid #34445b;padding:10px}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}
+button{cursor:pointer;font-family:"Lato",sans-serif}
+.keys button{height:53px;border:0;border-radius:12px;background:#202a39;color:white;font-size:22px}
+.keys button:active{background:#34445b}
+.call{width:100%;padding:16px;background:#20d991;color:#062116;border:0;border-radius:14px;font-weight:900;font-size:16px}
+.hang{width:100%;padding:13px;margin-top:9px;background:#d94352;color:white;border:0;border-radius:12px;font-weight:700}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.controls button,.controls label{background:#202a39;border:0;border-radius:12px;padding:12px;color:white;text-align:center}
+.controls label{grid-column:1/-1}
+.controls input{width:100%;margin-top:10px;accent-color:#20d991}
+.status{text-align:center;font-size:12px;color:#9ba9bb;margin-top:18px;min-height:30px}
+#duration{text-align:center;margin-top:8px;color:#42e8a0;font-size:13px}
+.note{text-align:center;color:#65748a;font-size:11px;line-height:1.5;margin-top:14px}
+</style>
+</head>
+<body>
+<main class="phone">
+<div class="logo">◉ InfinityCall</div>
+<div class="sub">BROWSER VOIP · SIP INTEGRATION</div>
+
+<button id="countryToggle" class="country-toggle" type="button" onclick="toggleCountry()">PAÍS: ON</button>
+
+<label for="number">País e número de telefone</label>
+<input id="number" type="tel" placeholder="Digite o telefone" autocomplete="tel">
+
+<div class="keys">
+<button onclick="key('1')">1</button><button onclick="key('2')">2</button><button onclick="key('3')">3</button>
+<button onclick="key('4')">4</button><button onclick="key('5')">5</button><button onclick="key('6')">6</button>
+<button onclick="key('7')">7</button><button onclick="key('8')">8</button><button onclick="key('9')">9</button>
+<button onclick="key('*')">*</button><button onclick="key('0')">0</button><button onclick="key('#')">#</button>
+</div>
+
+<button class="call" onclick="call()">☎ LIGAR</button>
+<button class="hang" onclick="hangup()">📴 ENCERRAR</button>
+
+<div class="controls">
+<button id="muteBtn" onclick="mute()">🎙️ MUDO: NÃO</button>
+<button id="recordBtn" onclick="record()">⏺️ GRAVAR</button>
+<label>🔉 Volume da chamada
+<input id="volume" type="range" min="0" max="100" value="80">
+</label>
+</div>
+
+<div id="duration">00:00</div>
+<div class="status" id="status">Pronto · configure o servidor VoIP</div>
+<div class="note">Chamadas reais precisam de servidor SIP, serviço de telefonia e áudio WebRTC configurados.</div>
+<audio id="remoteAudio" autoplay></audio>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@25.10.1/build/js/intlTelInput.min.js"></script>
+<script>
+const input=document.getElementById('number');
+const status=document.getElementById('status');
+const audio=document.getElementById('remoteAudio');
+const volume=document.getElementById('volume');
+const duration=document.getElementById('duration');
+const countryToggle=document.getElementById('countryToggle');
+
+let countryEnabled=true;
+let muted=false,recording=false,mediaRecorder=null,recordedChunks=[],timer=null,activeCall=false,localStream=null;
+
+const iti=window.intlTelInput(input,{
+initialCountry:'',
+separateDialCode:true,
+nationalMode:false,
+countrySearch:true,
+allowDropdown:true,
+loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@25.10.1/build/js/utils.js')
+});
+
+function toggleCountry(){
+countryEnabled=!countryEnabled;
+countryToggle.textContent='PAÍS: '+(countryEnabled?'ON':'OFF');
+countryToggle.classList.toggle('off',!countryEnabled);
+const selected=document.querySelector('.iti__selected-country');
+if(selected){
+selected.disabled=!countryEnabled;
+selected.setAttribute('aria-disabled',String(!countryEnabled));
+}
+if(!countryEnabled){
+const list=document.querySelector('.iti__country-list');
+if(list)list.classList.remove('iti__country-list--active');
+status.textContent='Seleção de país desativada.';
+}else{
+status.textContent='Seleção de país ativada.';
+}
+}
+
+document.addEventListener('click',e=>{
+if(!countryEnabled&&e.target.closest('.iti__selected-country')){
+e.preventDefault();
+e.stopPropagation();
+}
+},true);
+
+function key(k){
+const start=input.selectionStart??input.value.length;
+const end=input.selectionEnd??input.value.length;
+input.setRangeText(k,start,end,'end');
+input.focus();
+}
+
+function playTone(){
+try{
+const ctx=new(window.AudioContext||window.webkitAudioContext)();
+const osc=ctx.createOscillator();
+const gain=ctx.createGain();
+osc.type='sine';
+osc.frequency.value=440;
+gain.gain.value=0.07;
+osc.connect(gain);
+gain.connect(ctx.destination);
+osc.start();
+osc.stop(ctx.currentTime+0.18);
+osc.onended=()=>ctx.close();
+}catch(e){}
+}
+
+async function postAPI(path,body={}){
+const response=await fetch(path,{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(body)
+});
+const text=await response.text();
+let data;
+try{data=JSON.parse(text)}catch(e){
+throw new Error('O servidor não retornou JSON. Verifique a rota '+path);
+}
+if(!response.ok)throw new Error(data.message||'Erro HTTP '+response.status);
+return data;
+}
+
+async function call(){
+if(activeCall){status.textContent='Já existe uma chamada ativa.';return}
+if(!input.value.trim()){status.textContent='Digite um número primeiro.';return}
+if(countryEnabled&&!iti.isValidNumber()){
+status.textContent='Verifique o país e o número.';
+return;
+}
+status.textContent='Solicitando chamada ao servidor…';
+playTone();
+try{
+const number=countryEnabled?iti.getNumber():input.value.trim();
+const data=await postAPI('/api/call',{to:number});
+activeCall=true;
+status.textContent=data.message||'Pedido enviado; aguardando conexão de áudio.';
+startTimer();
+}catch(e){status.textContent=e.message}
+}
+
+function startTimer(){
+const started=Date.now();
+clearInterval(timer);
+timer=setInterval(()=>{
+const s=Math.floor((Date.now()-started)/1000);
+duration.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+},1000);
+}
+
+async function hangup(){
+if(!activeCall){status.textContent='Nenhuma chamada ativa.';return}
+try{
+const data=await postAPI('/api/hangup');
+activeCall=false;
+clearInterval(timer);
+duration.textContent='00:00';
+if(recording)stopRecording();
+status.textContent=data.message||'Chamada encerrada.';
+}catch(e){status.textContent=e.message}
+}
+
+function mute(){
+if(!localStream){
+status.textContent='O mudo precisa do áudio da chamada conectado ao navegador.';
+return;
+}
+muted=!muted;
+localStream.getAudioTracks().forEach(t=>t.enabled=!muted);
+document.getElementById('muteBtn').textContent=muted?'🎙️ MUDO: SIM':'🎙️ MUDO: NÃO';
+status.textContent=muted?'Microfone silenciado.':'Microfone ativado.';
+}
+
+volume.addEventListener('input',()=>audio.volume=Number(volume.value)/100);
+
+function record(){
+if(recording){stopRecording();return}
+if(!audio.srcObject){
+status.textContent='A gravação precisa receber o áudio real da chamada.';
+return;
+}
+const tracks=audio.srcObject.getAudioTracks();
+if(!tracks.length){status.textContent='Nenhuma faixa de áudio disponível.';return}
+try{
+mediaRecorder=new MediaRecorder(new MediaStream(tracks));
+recordedChunks=[];
+mediaRecorder.ondataavailable=e=>{if(e.data.size)recordedChunks.push(e.data)};
+mediaRecorder.onstop=()=>{
+const blob=new Blob(recordedChunks,{type:mediaRecorder.mimeType||'audio/webm'});
+const url=URL.createObjectURL(blob);
+const a=document.createElement('a');
+a.href=url;
+a.download='InfinityCall-gravacao.webm';
+a.click();
+setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+mediaRecorder.start();
+recording=true;
+document.getElementById('recordBtn').textContent='⏹️ PARAR GRAVAÇÃO';
+status.textContent='Gravação iniciada. Garanta o consentimento dos participantes.';
+}catch(e){status.textContent='Falha na gravação: '+e.message}
+}
+
+function stopRecording(){
+if(mediaRecorder&&mediaRecorder.state!=='inactive')mediaRecorder.stop();
+recording=false;
+document.getElementById('recordBtn').textContent='⏺️ GRAVAR';
+}
+</script>
+</body>
+  </html>
